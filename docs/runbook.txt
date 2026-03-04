@@ -1,0 +1,136 @@
+# STREAMSIGHT Runbook
+# Real-Time Crypto Market Anomaly Detection Platform
+# =================================================
+
+## Prerequisites
+- Windows 11 with Docker Desktop running
+- Python 3.10 (venv at C:\Users\niou2\Documents\streamsight\venv)
+- Spark 3.5.7 at C:\spark\spark-3.5.7-bin-hadoop3
+- Java OpenJDK 11 in PATH
+- Hadoop winutils at C:\hadoop\bin (hadoop.dll + winutils.exe for Hadoop 3.3.x)
+
+## Quick Start (copy-paste these commands in PowerShell)
+
+### Step 1: Navigate to project directory
+cd C:\Users\niou2\Documents\streamsight
+
+### Step 2: Set environment variables for Spark and Hadoop
+$env:SPARK_HOME = "C:\spark\spark-3.5.7-bin-hadoop3"
+$env:HADOOP_HOME = "C:\hadoop"
+$env:PYSPARK_PYTHON = "C:\Users\niou2\Documents\streamsight\venv\Scripts\python.exe"
+$env:PYSPARK_DRIVER_PYTHON = "C:\Users\niou2\Documents\streamsight\venv\Scripts\python.exe"
+$env:PATH = "C:\hadoop\bin;$env:SPARK_HOME\bin;$env:PATH"
+
+### Step 3: Start Docker services (Kafka, Zookeeper, Elasticsearch, Kibana)
+docker compose up -d
+
+### Step 4: Wait for services to be healthy (about 60 seconds for ES)
+Start-Sleep -Seconds 60
+docker compose ps
+
+### Step 5: Verify Kafka topic exists
+docker exec kafka kafka-topics --list --bootstrap-server localhost:9092
+
+### Step 6: (Optional) Create Kafka topic if not exists
+docker exec kafka kafka-topics --create --topic crypto_trades --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
+
+### Step 7: Create Elasticsearch index with mapping
+.\create_es_index.ps1
+
+### Step 8: Verify Elasticsearch is running
+curl http://localhost:9200/_cat/indices?v
+
+### Step 9: Start the Binance WebSocket producer (in a new terminal)
+# Open a new PowerShell window and run:
+cd C:\Users\niou2\Documents\streamsight
+.\venv\Scripts\Activate.ps1
+python binance_to_kafka.py
+
+### Step 10: Start Spark Streaming job (in another new terminal)
+# Open another PowerShell window and run:
+cd C:\Users\niou2\Documents\streamsight
+$env:HADOOP_HOME = "C:\hadoop"
+$env:PYSPARK_PYTHON = "C:\Users\niou2\Documents\streamsight\venv\Scripts\python.exe"
+$env:PYSPARK_DRIVER_PYTHON = "C:\Users\niou2\Documents\streamsight\venv\Scripts\python.exe"
+$env:PATH = "C:\hadoop\bin;$env:PATH"
+
+C:\spark\spark-3.5.7-bin-hadoop3\bin\spark-submit `
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7,org.elasticsearch:elasticsearch-spark-30_2.12:8.11.4 `
+  spark_streaming.py
+
+### Step 11: Access Kibana dashboard
+# Open browser: http://localhost:5601
+# Wait 3+ minutes for first windowed results to appear (1-min window + 2-min watermark)
+
+## Validation Commands
+
+### Check Docker containers
+docker ps
+
+### Check Kafka messages (sample 5)
+docker exec kafka kafka-console-consumer --topic crypto_trades --from-beginning --bootstrap-server localhost:9092 --max-messages 5
+
+### Check Elasticsearch indices
+curl http://localhost:9200/_cat/indices?v
+
+### Check Elasticsearch document count
+curl http://localhost:9200/streamsight-trades/_count
+
+### Check Elasticsearch sample documents
+curl "http://localhost:9200/streamsight-trades/_search?pretty&size=3"
+
+### Check Spark streaming job logs
+# Look at the terminal running spark-submit
+# Console output shows batches with: symbol, window_start, window_end, vwap, zscore, is_anomaly
+
+## Expected Console Output (after ~3 minutes)
+
+-------------------------------------------
+Batch: N
+-------------------------------------------
++-------+-------------------+-------------------+------------+-----------+---------+---------+-------------+------+----------+------------+-------------------+
+|symbol |window_start       |window_end         |total_volume|trade_count|avg_price|vwap     |price_stddev |zscore|is_anomaly|anomaly_type|doc_id             |
++-------+-------------------+-------------------+------------+-----------+---------+---------+-------------+------+----------+------------+-------------------+
+|BTCUSDT|2025-12-19 20:21:00|2025-12-19 20:22:00|12.345      |5000       |87650.12 |87650.45 |15.234       |0.022 |false     |NORMAL      |BTCUSDT_20251219...|
++-------+-------------------+-------------------+------------+-----------+---------+---------+-------------+------+----------+------------+-------------------+
+
+## Troubleshooting
+
+### If Elasticsearch fails to start
+docker logs elasticsearch
+
+### If Kafka connection fails
+docker exec kafka kafka-topics --list --bootstrap-server localhost:9092
+
+### If Spark job fails with "Failed to find data source: kafka"
+# Make sure --packages argument is correct
+# Check internet connection (Maven needs to download JARs first time)
+
+### If Spark job fails with NativeIO error
+# Ensure C:\hadoop\bin contains hadoop.dll and winutils.exe for Hadoop 3.3.x
+# Download from: https://github.com/cdarlint/winutils/tree/master/hadoop-3.3.5/bin
+# Set HADOOP_HOME environment variable
+
+### Clear checkpoints (if restarting with schema changes)
+Remove-Item -Recurse -Force C:\Users\niou2\Documents\streamsight\checkpoints
+
+### If no data appears after 3+ minutes
+# 1. Check producer is running and showing "Sent:" messages
+# 2. Check Kafka has data: docker exec kafka kafka-console-consumer ...
+# 3. Check Spark job console for errors
+# 4. Check ES index: curl http://localhost:9200/streamsight-trades/_count
+
+## Shutdown
+
+### Stop Spark job
+# Press Ctrl+C in the spark-submit terminal
+
+### Stop Binance producer
+# Press Ctrl+C in the producer terminal
+
+### Stop Docker services
+docker compose down
+
+### Stop and remove all data (clean reset)
+docker compose down -v
+Remove-Item -Recurse -Force C:\Users\niou2\Documents\streamsight\checkpoints
