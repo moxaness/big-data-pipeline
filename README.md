@@ -1,8 +1,25 @@
-# STREAMSIGHT
+# STREAMSIGHT – Real-Time Crypto Anomaly Detection
 
-Real-time cryptocurrency market anomaly detection platform using Apache Spark Structured Streaming.
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Apache Spark](https://img.shields.io/badge/Spark%20Structured%20Streaming-3.5-E25A1C?logo=apachespark&logoColor=white)
+![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?logo=apachekafka&logoColor=white)
+![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.11-005571?logo=elasticsearch&logoColor=white)
+![Kibana](https://img.shields.io/badge/Kibana-005571?logo=kibana&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white)
+
+An end-to-end **streaming data pipeline** that ingests live Bitcoin trades from Binance, computes volume-weighted prices in time windows with **Spark Structured Streaming**, flags abnormal price moves with a **Z-score**, and visualises everything live in **Kibana**.
+
+![Kibana dashboard](pictures/fig11_kibana_dashboard.png)
+
+**What this project demonstrates**
+- Real-time ingestion from a WebSocket API into **Kafka**
+- Stateful stream processing in Spark: event-time **tumbling windows**, **watermarks** for late data, aggregations
+- A simple, explainable statistical anomaly detector (VWAP + Z-score)
+- Indexing into **Elasticsearch** and building **Kibana** dashboards
+- Running the whole infrastructure with **Docker Compose**, plus a FastAPI demo app to present and control the pipeline
 
 ## Architecture
+
 
 ```
 Binance WebSocket ──▶ Python Producer ──▶ Apache Kafka ──▶ Spark Streaming ──▶ Elasticsearch ──▶ Kibana
@@ -87,22 +104,24 @@ spark-submit `
 ## Project Structure
 
 ```
-streamsight/
-├── binance_to_kafka.py    # Binance WebSocket → Kafka producer
-├── spark_streaming.py     # Spark Structured Streaming job (VWAP + Z-score)
-├── docker-compose.yml     # Kafka, Zookeeper, Elasticsearch, Kibana
-├── create_es_index.ps1    # Elasticsearch index mapping setup
-├── requirements.txt       # Python dependencies
-├── docs/
-│   ├── PERSISTENCE_RUNBOOK.md    # Full restart-after-reboot guide
-│   ├── runbook.txt               # Quick operational reference
-│   ├── kibana_setup.md           # Kibana dashboard setup instructions
-│   ├── PROJECT_EXPLANATION.md    # Detailed project explanation & glossary
-│   ├── technical_report.md       # Technical architecture report
-│   ├── final_report_paragraph.md # Project summary write-up
-│   ├── study_document.tex        # Defense preparation study guide
-│   └── university_report.tex     # Academic report (LaTeX)
-└── .gitignore
+big-data-pipeline/
+├── binance_to_kafka.py      # Binance WebSocket → Kafka producer
+├── spark_streaming.py       # Spark Structured Streaming job (VWAP + Z-score)
+├── demo_app.py              # FastAPI presentation app: pipeline controls, live logs, embedded Kibana
+├── setup_kibana.py          # Creates the Kibana data view and visualisations
+├── kibana_dashboard.ndjson  # Exported Kibana dashboard (import via Saved Objects)
+├── docker-compose.yml       # Kafka, Zookeeper, Elasticsearch, Kibana
+├── create_es_index.ps1      # Elasticsearch index mapping setup
+├── requirements.txt         # Python dependencies
+├── streamsight_report.tex   # Academic report (LaTeX)
+├── pictures/                # Screenshots of every pipeline stage
+└── docs/
+    ├── PROJECT_EXPLANATION.md   # Detailed project explanation & glossary
+    ├── technical_report.md      # Technical architecture report
+    ├── kibana_setup.md          # Kibana dashboard setup instructions
+    ├── PERSISTENCE_RUNBOOK.md   # Full restart-after-reboot guide
+    ├── PRESENTATION_GUIDE.md    # How to demo the project
+    └── runbook.txt              # Quick operational reference
 ```
 
 ## Key Metrics
@@ -129,6 +148,14 @@ docker compose down
 | No data in Elasticsearch | Ensure both producer and Spark are running; wait 3-5 min for first batch |
 | Spark checkpoint errors on restart | Delete `checkpoints/` folder and restart |
 
-## License
+## Screenshots
 
-This project was built as a university coursework demonstration.
+| Spark windowed output | Anomaly detection in Kibana |
+|---|---|
+| ![Spark window output](pictures/fig8_spark_window.png) | ![Kibana anomalies](pictures/fig13_kibana_anomaly.png) |
+| **Live trades in Kafka** | **VWAP over time** |
+| ![Kafka messages](pictures/fig10_kafka_messages.png) | ![Kibana VWAP](pictures/fig12_kibana_vwap.png) |
+
+## About
+
+Built as a university Big Data project by **Mohammed Anes Boucetla** ([github.com/moxaness](https://github.com/moxaness)). The run commands above are written for Windows PowerShell; on Linux/macOS use the equivalent `source venv/bin/activate` and `export` syntax, and skip the `winutils` step.
